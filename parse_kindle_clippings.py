@@ -322,7 +322,7 @@ def sort_clippings_by_book(clippings : List[ClippingsItem]) -> Dict[str, List[Cl
 
 
 def read_and_save_json(
-		filename : str = 'data.json', 
+		filename : str = '../data.json', 
 		data_reader : Callable = parse_clippings_file,
 		data_converter : Callable = lambda x : x,
 	) -> None:
@@ -473,8 +473,8 @@ def ClippingsItem_lst_md(data : List[ClippingsItem], sort_clipitems : Callable =
 
 def read_and_save_bybook_md(
 		file_in : str = CLIPPINGS_FILENAME, 
-		out_dir : str = 'notes/', 
-		json_out : Optional[str] = 'data.json',
+		out_dir : str = '../notes', 
+		json_out : Optional[str] = '../data.json',
 	) -> None:
 	"""reads `file_in`, splits up by book, and saves as markdown to `out_dir/<filename>`
 	
@@ -484,7 +484,7 @@ def read_and_save_bybook_md(
 	 - `file_in : str`   
 	   (defaults to `CLIPPINGS_FILENAME`)
 	 - `out_dir : str`   
-	   (defaults to `'books/'`)
+	   (defaults to `'../notes/'`)
 	 - `json_out : Optional[str]`   
 	   (defaults to `None`)
 	"""
@@ -510,7 +510,7 @@ def read_and_save_bybook_md(
 			f.write(ClippingsItem_lst_md(items))
 			
 
-ZOTERO_KINDLE_CACHE_FILE : str = 'zotero_kindle_cache.json'
+ZOTERO_KINDLE_CACHE_FILE : str = '../zotero_kindle_cache.json'
 
 ZKCacheKey = NamedTuple('ZKCacheKey', [
 	('author', str),
@@ -638,8 +638,8 @@ def zotero_upload_notes(
 if __name__ == "__main__":
 	import fire
 	fire.Fire({
-		'data_list' : lambda fn='data.json' : read_and_save_json(fn),
-		'data_book' : lambda fn='data.json' : read_and_save_json(fn, data_converter=sort_clippings_by_book),
+		'data_list' : lambda fn='../data.json' : read_and_save_json(fn),
+		'data_book' : lambda fn='../data.json' : read_and_save_json(fn, data_converter=sort_clippings_by_book),
 		'md_book' : read_and_save_bybook_md,
 	})
 
