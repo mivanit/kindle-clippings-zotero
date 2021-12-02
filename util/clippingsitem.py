@@ -188,3 +188,27 @@ def merge_list_clip_items(data : List[ClippingsItem]) -> List[ClippingsItem]:
 				break
 
 	return data_new
+
+
+
+def parse_clippings_file(filename : str = CLIPPINGS_FILENAME, merge : bool = True) -> List[ClippingsItem]:
+	"""parses a clippings file into a list of named tuples
+
+	### Parameters:
+	 - `filename : str`   
+	
+	### Returns:
+	 - `List[ClippingsItem]` 
+	"""
+
+	with open(filename, 'r') as f:
+		data : List[ClippingsItem] = [
+			parse_ClippingsItem(item)
+			for item in f.read().split(MARKERS['item_split'])
+			if item.strip()
+		]
+	
+	if merge:
+		data = merge_list_clip_items(data)
+	
+	return data
