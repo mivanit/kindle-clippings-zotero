@@ -1,5 +1,15 @@
+"""
+
+https://www.zotero.org/support/dev/web_api/v3/
+
+"""
+
 from typing import *
 import json
+import sys
+import os
+
+import urllib3
 
 from util.clippingsitem import (
 	ClippingsType, ClippingsItem,
@@ -10,10 +20,14 @@ from util.export import (
 )
 
 ZOTERO_KINDLE_CACHE_FILE : str = '../zotero_kindle_cache.json'
+ZOTERO_API_DATA_FILE : str = '__zotero_api__.json'
+
+
+
 
 ZKCacheKey = NamedTuple('ZKCacheKey', [
-	('author', str),
 	('title', str),
+	('author', str),
 ])
 
 ZoteroKey = str
@@ -53,12 +67,136 @@ def zk_cache_set(key : ZKCacheKey, value : str) -> None:
 	with open(ZOTERO_KINDLE_CACHE_FILE, 'w') as f:
 		json.dump(cache, f)
 
+def validate_zk_cache() -> bool:
+	"""
+	validate the zotero-kindle cache
 
-def zotero_find_possible_keys(cache_key : ZKCacheKey) -> Dict[ZoteroKey,str]:
-	raise NotImplementedError('not implemented')
+	(create it if the file does not exist)
+	"""
+	if not os.path.exists(ZOTERO_KINDLE_CACHE_FILE):
+		print(f'!!! WARNING !!! zotero-kindle cache file does not exist, creating it at {ZOTERO_KINDLE_CACHE_FILE}')
+		with open(ZOTERO_KINDLE_CACHE_FILE, 'w') as f:
+			json.dump(dict(), f)
+		return False
+
+	try:
+		with open(ZOTERO_KINDLE_CACHE_FILE, 'r') as f:
+			cache : dict = json.load(f)
+	except (
+		FileNotFoundError,
+		json.decoder.JSONDecodeError,
+		UnicodeDecodeError,
+		ValueError,
+	) as e:
+		print(f'!!! ERROR !!! could not load zotero-kindle cache at {ZOTERO_KINDLE_CACHE_FILE}:\n', e, file = sys.stderr)
+		return False
+	
+	return True
+
+# validate the cache at runtime
+validate_zk_cache()
+
+def string_minimize(s : str) -> str:
+	s_trim : str = (
+		s
+		.strip()
+		.replace('\r', '')
+		.replace('\n', ' ')
+		.replace('\t', ' ')
+		.replace('-', ' ')
+		.replace('_', ' ')
+		.replace('  ', ' ').replace('  ', ' ').replace('  ', ' ')
+		.lower()
+		.strip()
+	)
+
+	return (
+		''.join([
+			c for c in s_trim
+			if c in 'abcdefghijklmnopqrstuvwxyz '
+		])
+	)
+
+
+# def fuzzy_match_ZK_keys(a : ZKCacheKey, b : ZKCacheKey) -> bool:
+# 	return string_minimize(a.title) == string_minimize(b.title)
+
+
+def ZKCacheKey_from_item_raw(item_raw : dict) -> ZKCacheKey:
+	"""
+	extract the cache key from the response
+	"""
+	try:
+		if ('title' in item_raw['meta']) and ('creators' in item_raw['meta']):
+			return ZKCacheKey(
+				title = item_raw['meta']['title'],
+				author = ' '.join([
+					a['firstName'] + ' ' + a['lastName']
+					for a in item_raw['meta']['creators']
+					if a['creatorType'] == 'author'
+				]),
+			)
+		else:
+			return ZKCacheKey(
+				title = item_raw['data']['title'],
+				author = '',
+			)
+	except KeyError:
+		print('!!! ERROR !!! could not find title/author in item:\n\n', json.dumps(item_raw, indent=2), out = sys.stderr)
+		return ZKCacheKey(
+			title = '',
+			author = '',
+		)
+
+class ZoteroManager(object):
+	def __init__(self) -> None:
+		self.https = urllib3.PoolManager()
+		with open(ZOTERO_API_DATA_FILE, 'r') as f:
+			self.api_data = json.load(f)
+			self.api_key = self.api_data['key']
+			self.url = self.api_data['url']
+	
+	def get_raw(self, item_key : ZoteroKey) -> dict:
+		"""get raw item info from zotero api"""
+		url = self.url + item_key
+		r = self.https.request('GET', url, headers = {'Zotero-API-Key': self.api_key})
+		return json.loads(r.data.decode('utf-8'))
+
+	def get_item_fmt_ZKCacheKey(self, item_key : ZoteroKey) -> ZKCacheKey:
+		"""get a `ZKCacheKey` from a zotero item key"""
+		item_raw = self.get_raw(item_key)
+		return ZKCacheKey_from_item_raw(item_raw)
+
+	def search_raw(self, query : str) -> list:
+		r = self.https.request(
+			'GET', 
+			self.url, 
+			headers = {'Zotero-API-Key': self.api_key, 'q' : query},
+		)
+		return json.loads(r.data.decode('utf-8'))
+
+	def search_fmt(self, query : str) -> list:
+		r = self.search_raw(query)
+		return [
+			ZKCacheKey_from_item_raw(x)
+			for x in r
+		]
+
+	def find_possible_keys(self, cache_key : ZKCacheKey) -> Dict[ZoteroKey,str]:
+		"""
+		find possible keys for a given cache key
+		"""
+		zot_keys : Dict[ZoteroKey,str] = {}
+		query_results = self.search_raw(string_minimize(cache_key.title))
+		for item_raw in query_results:
+			key = ZoteroKey(item_raw['key'])
+			if key not in zot_keys:
+				zot_keys[key] = ZKCacheKey_from_item_raw(item_raw)
+		return zot_keys
 
 
 def zotero_upload_notes(
+		zotero_manager : ZoteroManager,
 		data : List[ClippingsItem], 
 		title : Optional[str] = None, author : Optional[str] = None,
 		export_func : Callable[[List[ClippingsItem]], str] = ClippingsItem_lst_md,
@@ -68,7 +206,7 @@ def zotero_upload_notes(
 	title,author = grab_title_author(data)
 
 	# check a cache for what to do with notes for this book
-	cache_key : ZKCacheKey = ZKCacheKey(author, title)
+	cache_key : ZKCacheKey = ZKCacheKey(title, author)
 	cache_value : Optional[str] = zk_cache_get(cache_key)
 
 	# if bibtex key is unknown, or key is postponed, ask user what to do
@@ -87,7 +225,7 @@ def zotero_upload_notes(
 		# if add, then:
 		elif action == 'add':
 			# look in Zotero for items with matching author and title
-			possible_keys : Dict[ZoteroKey,str] = zotero_find_possible_keys(cache_key)
+			possible_keys : Dict[ZoteroKey,str] = zotero_manager.find_possible_keys(cache_key)
 			print('# possible Zotero keys:')
 			for key,info in possible_keys.items():
 				print(f'\t{key} : {info}')
