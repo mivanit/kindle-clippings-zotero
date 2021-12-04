@@ -128,25 +128,38 @@ def ZKCacheKey_from_item_raw(item_raw : dict) -> ZKCacheKey:
 	extract the cache key from the response
 	"""
 	try:
-		if ('title' in item_raw['meta']) and ('creators' in item_raw['meta']):
-			return ZKCacheKey(
-				title = item_raw['meta']['title'],
-				author = ' '.join([
-					a['firstName'] + ' ' + a['lastName']
-					for a in item_raw['meta']['creators']
-					if a['creatorType'] == 'author'
-				]),
-			)
-		else:
-			return ZKCacheKey(
-				title = item_raw['data']['title'],
-				author = '',
-			)
-	except KeyError:
-		print('!!! ERROR !!! could not find title/author in item:\n\n', json.dumps(item_raw, indent=2), out = sys.stderr)
+		title : str = '<none>'
+		author : str = '<none>'
+		
+		# getting title
+		if ('title' in item_raw['meta']):
+			title = item_raw['meta']['title'],
+		elif ('title' in item_raw['data']):
+			title = item_raw['data']['title'],
+
+		# getting author
+		if ('creatorSummary' in item_raw['meta']):
+			author = item_raw['meta']['creatorSummary']
+		elif ('creators' in item_raw['data']):
+			author = ' '.join([
+				a['firstName'] + ' ' + a['lastName']
+				for a in item_raw['meta']['creators']
+				if a['creatorType'] == 'author'
+			])
+		
+		if isinstance(title, tuple):
+			title = title[0]
+
 		return ZKCacheKey(
-			title = '',
-			author = '',
+			title = title,
+			author = author,
+		)
+		
+	except KeyError:
+		print('!!! ERROR !!! could not find title/author in item:\n\n', json.dumps(item_raw, indent=2), file = sys.stderr)
+		return ZKCacheKey(
+			title = title,
+			author = author,
 		)
 
 class ZoteroManager(object):
@@ -183,7 +196,7 @@ class ZoteroManager(object):
 			for x in r
 		]
 
-	def find_possible_keys(self, cache_key : ZKCacheKey) -> Dict[ZoteroKey,str]:
+	def find_possible_keys(self, cache_key : ZKCacheKey) -> Dict[ZoteroKey,ZKCacheKey]:
 		"""
 		find possible keys for a given cache key
 		"""
@@ -217,6 +230,8 @@ def zotero_upload_notes(
 		if action in ZK_CACHE_ACTIONS:
 			action = ZK_CACHE_ACTIONS[action]
 
+		# TODO: loop around the command if its invalid
+
 		# if ignore, then save this to cache
 		if action == 'ignore':
 			zk_cache_set(cache_key, -1)
@@ -226,16 +241,20 @@ def zotero_upload_notes(
 		# if add, then:
 		elif action == 'add':
 			# look in Zotero for items with matching author and title
-			possible_keys : Dict[ZoteroKey,str] = zotero_manager.find_possible_keys(cache_key)
+			possible_keys : Dict[ZoteroKey,ZKCacheKey] = zotero_manager.find_possible_keys(cache_key)
 			print('# possible Zotero keys:')
 			for key,info in possible_keys.items():
-				print(f'\t{key} : {info}')
+				print(
+					f'\t{key} : {info.title}' 
+					+ f' by {info.author}' if info.author else ''
+				)
 
 			# ask the user which item to pair with
 			print(f'# please select Zotero item to pair with "{title}" by "{author}", or selection action from {ZK_CACHE_ACTIONS} by prefixing with "!":')
 			action_pair : str = input('  > ')
 
 			# if command given, process
+			# TODO: commands not detected here properly
 			if action_pair.startswith('!'):
 				# match command to action
 				if action_pair[1:] in ZK_CACHE_ACTIONS:
