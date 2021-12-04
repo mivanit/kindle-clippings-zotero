@@ -1,11 +1,16 @@
 from typing import *
 
+import json
+
 from util.json_serialize import arbit_json_serialize
 from util.clippingsitem import (
 	ClippingsType, ClippingsItem,
 	CLIPPINGS_FILENAME,
 	parse_clippings_file,
 )
+
+DATA_EXPORT_PATH : str = '../data.json'
+
 
 def sort_clippings_by_book(clippings : List[ClippingsItem]) -> Dict[str, List[ClippingsItem]]:
 	"""sorts the clippings by book
@@ -30,7 +35,7 @@ def sort_clippings_by_book(clippings : List[ClippingsItem]) -> Dict[str, List[Cl
 
 
 def read_and_save_json(
-		filename : str = '../data.json', 
+		filename : str = DATA_EXPORT_PATH, 
 		data_reader : Callable = parse_clippings_file,
 		data_converter : Callable = lambda x : x,
 	) -> None:
@@ -181,8 +186,8 @@ def ClippingsItem_lst_md(data : List[ClippingsItem], sort_clipitems : Callable =
 
 def read_and_save_bybook_md(
 		file_in : str = CLIPPINGS_FILENAME, 
-		out_dir : str = '../notes', 
-		json_out : Optional[str] = '../data.json',
+		out_dir : str = '../notes/', 
+		json_out : Optional[str] = DATA_EXPORT_PATH,
 	) -> None:
 	"""reads `file_in`, splits up by book, and saves as markdown to `out_dir/<filename>`
 	
@@ -205,7 +210,7 @@ def read_and_save_bybook_md(
 	if json_out is not None:
 		with open(json_out, 'w', newline='\n') as f:
 			json.dump(
-				data_bybook, 
+				arbit_json_serialize(data_bybook), 
 				f,
 				indent = 4,
 			)

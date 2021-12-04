@@ -17,6 +17,7 @@ from util.clippingsitem import (
 
 from util.export import (
 	grab_title_author, ClippingsItem_lst_md,
+	DATA_EXPORT_PATH,
 )
 
 ZOTERO_KINDLE_CACHE_FILE : str = '../zotero_kindle_cache.json'
@@ -261,7 +262,7 @@ def zotero_upload_notes(
 					zk_cache_set(cache_key, zotero_key)
 					# and then upload the notes
 					notes_export : str = export_func(data)
-					raise NotImplementedError('uploading of notes given zotero key not implemented')
+					raise NotImplementedError('uploading of notes given zotero key not implemented\n\n' + notes_export)
 				else:
 					# if key is not in possible keys, then complain and then postpone
 					print(f'WARNING: "{zotero_key}" is not a possible Zotero key for "{title}" by "{author}". postponing.')
@@ -270,4 +271,24 @@ def zotero_upload_notes(
 		else:
 			raise KeyError(f'unknown action "{action}"')	
 
+def zotero_upload_all(
+		data_json_path : str = DATA_EXPORT_PATH,
+		zotero_manager : ZoteroManager = None,
+		export_func : Callable[[List[ClippingsItem]], str] = ClippingsItem_lst_md,
+	) -> None:
 
+	if zotero_manager is None:
+		zotero_manager = ZoteroManager()
+
+	with open(data_json_path, 'r') as f:
+		data : Dict[str,List[ClippingsItem]] = json.load(f)
+		data = {
+			k : [ ClippingsItem(**x) for x in v ]
+			for k,v in data.items()
+		}
+
+	for title,items in data.items():
+		print(f'# uploading "{title}"')
+		zotero_upload_notes(zotero_manager, items, export_func = export_func)
+
+	return

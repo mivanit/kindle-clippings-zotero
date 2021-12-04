@@ -14,7 +14,7 @@ ClippingsItem = NamedTuple('ClippingsItem', [
 	('text_note', Optional[str]),
 ])
 
-CLIPPINGS_FILENAME : str = "My Clippings.txt"
+CLIPPINGS_FILENAME : str = "..\\My Clippings.txt"
 
 MARKERS : Dict[str,str] = {
 	'meta_split' : '|',
@@ -57,11 +57,28 @@ def parse_ClippingsItem(item_raw : str) -> ClippingsItem:
 	# remove weird bytes at the begginning of `line_titleauthor`
 	line_titleauthor = line_titleauthor[3:]
 
-	# find the title by getting all the text before the last '('
-	index_title_end : str = line_titleauthor.rindex('(')
-	title : str = line_titleauthor[:index_title_end].strip()
-	# and the author(s) by stripping the text after the last '('
-	author : str = line_titleauthor[index_title_end:].strip(' \t\n()').strip()
+	# first, just use the whole string as the title
+	title : str = line_titleauthor
+	author : str = ''
+	
+	try: 
+		if '(' in line_titleauthor:
+			# first, assume it is in epub format:
+			# find the title by getting all the text before the last '('
+			index_title_end : str = line_titleauthor.rindex('(')
+			title = line_titleauthor[:index_title_end].strip()
+			# and the author(s) by stripping the text after the last '('
+			author = line_titleauthor[index_title_end:].strip(' \t\n()').strip()
+		elif line_titleauthor.count('-') == 2:
+			# if it has dashes, assume it is in the (custom) zotero format
+			# `author_names_etal-<year>-title_with_underscores`
+			author, year, title = line_titleauthor.split('-')
+			title = title.replace('_', ' ').strip()
+			author = author.replace('_', ' ').strip()
+
+	except (IndexError,ValueError) as e:
+		print(f'caught exception when finding metadata: \n {author=}\t{title=}\n{e}')
+		
 
 	# find the type 
 	clip_type : ClippingsType = (
@@ -128,7 +145,7 @@ def check_can_merge(itm_note : ClippingsItem, itm_highlight : ClippingsItem) -> 
 		# check locations match
 		loc_note_end == loc_hl_end,
 		# check dates match
-		itm_note.date_unix == itm_highlight.date_unix,
+		abs(itm_note.date_unix - itm_highlight.date_unix) < 10,
 	])
 
 
@@ -178,6 +195,7 @@ def merge_list_clip_items(data : List[ClippingsItem]) -> List[ClippingsItem]:
 	# loop over all notes, and merge them into highlights that are missing notes
 	for item_note in data_notes_only:
 		# loop over highlights, and see if there is a highlight that has the same location and time
+		found_match : bool = False
 		for idx_new,item_new in enumerate(data_new):
 			# make sure the item can still be augmented
 			if (item_new.text_note is not None) or (item_new.clip_type != 'Highlight'):
@@ -185,7 +203,11 @@ def merge_list_clip_items(data : List[ClippingsItem]) -> List[ClippingsItem]:
 
 			if check_can_merge(item_note, item_new):
 				data_new[idx_new] = merge_note_highlight(item_note, item_new)
+				found_match = True
 				break
+		# if no match was found, add the note to the list
+		if not found_match:
+			data_new.append(item_note)
 
 	return data_new
 

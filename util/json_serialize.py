@@ -48,7 +48,8 @@ def arbit_json_serialize(obj : Any, depth : int = -1 ) -> Any:
 			# if dict, recurse
 			out_dict : Dict[str,Any] = dict()
 			for k,v in obj.items():
-				out_dict[str(k)] = arbit_json_serialize(v, depth-1)
+				newkey = str(k) if not isinstance(k, (str, int, None)) else k
+				out_dict[newkey] = arbit_json_serialize(v, depth-1)
 			return out_dict
 
 		elif isinstance_namedtuple(obj):
