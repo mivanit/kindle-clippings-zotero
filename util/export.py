@@ -122,9 +122,13 @@ def ClippingsItem_md_skip_TA(item : ClippingsItem) -> str:
 	clip_type_text : str = 'Note'
 
 	if item.clip_type == 'Note':
-		item_hltext = '   (unknown highlighted text)'
+		item_hltext = '   (unknown highlighted text)   '
 	else:
-		item_hltext = '   > ' + item.text_highlight.strip().replace("\n", "\n   > ")
+		item_hltext = (
+			'   > ' 
+			+ item.text_highlight.strip().replace("\n", "\n   > ")
+			+ '   '
+		)
 
 
 	if item.clip_type == 'Highlight':
@@ -133,12 +137,12 @@ def ClippingsItem_md_skip_TA(item : ClippingsItem) -> str:
 	else:
 		item_notetext = [
 			"  ```",
-			"  " + item.text_note.strip().replace("\n", "\n   "),
-			"  ```",
+			"   " + item.text_note.strip().replace("\n", "  \n   "),
+			"  ```   ",
 		]
 		
 	return '\n'.join([
-		f'- {clip_type_text} at location **{item.location}** made on *{item.date}*',
+		f'- {clip_type_text} at location **{item.location}** made on *{item.date}*   ',
 		item_hltext,
 		*item_notetext,
 	])
