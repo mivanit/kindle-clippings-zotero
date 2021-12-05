@@ -62,7 +62,7 @@ def read_and_save_json(
 			indent = 4,
 		)
 
-def ClippingsItem_to_filename(item : ClippingsItem) -> str:
+def ClippingsItem_to_filename(item : Union[ClippingsItem, 'ZKCacheKey']) -> str:
 	"""turn a clippings item into a filename
 	
 	all whitespace replaced with '-' or removed
@@ -72,7 +72,7 @@ def ClippingsItem_to_filename(item : ClippingsItem) -> str:
 	`<title>_<author_short>.txt`
 	
 	### Parameters:
-	 - `item : ClippingsItem`   
+	 - `item : Union[ClippingsItem, 'ZKCacheKey']`   
 	
 	### Returns:
 	 - `str` 

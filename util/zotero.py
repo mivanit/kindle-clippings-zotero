@@ -12,13 +12,14 @@ import pyzotero
 
 import urllib3
 from pyzotero import zotero
+from pyzotero.zotero_errors import PyZoteroError
 
 from util.clippingsitem import (
 	ClippingsType, ClippingsItem,
 )
 
 from util.export import (
-	grab_title_author, ClippingsItem_lst_md,
+	grab_title_author, ClippingsItem_lst_md,ClippingsItem_to_filename,
 	DATA_EXPORT_PATH,
 )
 
@@ -275,7 +276,7 @@ class ZoteroManager(object):
 				zot_keys[key] = ZKCacheKey_from_item_raw(item_raw)
 		return zot_keys
 
-	def upload_attachment(self, filepath : str, parentID : ZoteroKey) -> bool:
+	def upload_attachment(self, filepath : str, parentID : ZoteroKey) -> tuple:
 		"""upload an attachment to zotero"""
 		# TODO: this is really inefficient, but it works for now
 		# OPTIMIZE: upload all attachments at once
@@ -287,11 +288,23 @@ class ZoteroManager(object):
 
 		# if file already exists, delete it first
 		item_exists : Optional[dict] = self.search_title_exact(metadata["title"], top_only = False)
-		if item_exists is not None:
-			print(f"deleting existing attachment {item_exists['key']}")
-			self.pyzot.delete_item([item_exists])
+		try:
+			if item_exists is not None:
+				print(f"    deleting existing attachment {item_exists['key']}")
+				self.pyzot.delete_item([item_exists])
 
-		return self.pyzot._attachment([metadata], parentID)
+			res = self.pyzot._attachment([metadata], parentID)
+			
+			res_key = [
+				x 
+				for x in ['success', 'failure', 'unchanged']
+				if len(res[x]) > 0
+			].pop()
+
+			return ( res[res_key][0]['key'], res_key )
+		except PyZoteroError as e:
+			print(f"    error uploading attachment: {e}")
+			return (None, 'error')
 
 
 def zotero_upload_notes(
@@ -364,16 +377,25 @@ def zotero_upload_notes(
 				if zotero_key in possible_keys:
 					# if key is in possible keys, then save this to cache
 					zk_cache_set(cache_key, zotero_key)
-					# and then upload the notes
-					notes_export : str = export_func(data)
-					raise NotImplementedError('uploading of notes given zotero key not implemented\n\n' + notes_export)
+					
 				else:
 					# if key is not in possible keys, then complain and then postpone
 					print(f'WARNING: "{zotero_key}" is not a possible Zotero key for "{title}" by "{author}". postponing.')
 					zk_cache_set(cache_key, 0)
 
 		else:
-			raise KeyError(f'unknown action "{action}"')	
+			raise KeyError(f'unknown action "{action}"')
+	else:
+		if cache_value == -1:
+			print(f'  ## ignoring "{title}" by "{author}", bibtex key is unknown')
+		elif isinstance(cache_value, str):
+			# and then upload the notes
+			notes_export : str = export_func(data)
+			fname_export : str = '../zotero_export/' + ClippingsItem_to_filename(cache_key) + '.md'
+			with open(fname_export, 'w') as f:
+				f.write(notes_export)
+			res = zotero_manager.upload_attachment(fname_export, cache_value)
+			print(f'  ## uploaded: {cache_key=} {fname_export=} {cache_value=} {res=}')
 
 def zotero_upload_all(
 		data_json_path : str = DATA_EXPORT_PATH,
