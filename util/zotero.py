@@ -8,7 +8,6 @@ from typing import *
 import json
 import sys
 import os
-import pyzotero
 
 import urllib3
 from pyzotero import zotero
@@ -69,7 +68,7 @@ def zk_cache_set(key : ZKCacheKey, value : str) -> None:
 		cache : dict = json.load(f)
 	cache[ZKCacheKey_tostr(key)] = value
 	with open(ZOTERO_KINDLE_CACHE_FILE, 'w') as f:
-		json.dump(cache, f)
+		json.dump(cache, f, indent = '\t')
 
 def validate_zk_cache() -> bool:
 	"""
@@ -80,7 +79,7 @@ def validate_zk_cache() -> bool:
 	if not os.path.exists(ZOTERO_KINDLE_CACHE_FILE):
 		print(f'!!! WARNING !!! zotero-kindle cache file does not exist, creating it at {ZOTERO_KINDLE_CACHE_FILE}')
 		with open(ZOTERO_KINDLE_CACHE_FILE, 'w') as f:
-			json.dump(dict(), f)
+			json.dump(dict(), f, indent = '\t')
 		return False
 
 	try:

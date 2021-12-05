@@ -14,7 +14,7 @@ ClippingsItem = NamedTuple('ClippingsItem', [
 	('text_note', Optional[str]),
 ])
 
-CLIPPINGS_FILENAME : str = "..\\My Clippings.txt"
+CLIPPINGS_FILENAME : str = "../My Clippings.txt"
 
 MARKERS : Dict[str,str] = {
 	'meta_split' : '|',
