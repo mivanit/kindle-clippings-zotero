@@ -8,8 +8,10 @@ from typing import *
 import json
 import sys
 import os
+import pyzotero
 
 import urllib3
+from pyzotero import zotero
 
 from util.clippingsitem import (
 	ClippingsType, ClippingsItem,
@@ -166,28 +168,93 @@ class ZoteroManager(object):
 	def __init__(self) -> None:
 		self.https = urllib3.PoolManager()
 		with open(ZOTERO_API_DATA_FILE, 'r') as f:
-			self.api_data = json.load(f)
-			self.api_key = self.api_data['key']
-			self.url = self.api_data['url']
+			self.api_data : dict = json.load(f)
+			self.api_key : str = self.api_data['key']
+			self.url : str = self.api_data['url']
+			self.pyzot : zotero.Zotero = zotero.Zotero(
+				self.get_library_id(),
+				self.get_library_type(),
+				self.api_key,
+			)
 	
-	def get_raw(self, item_key : ZoteroKey) -> dict:
+	def get_raw(self, item_key : ZoteroKey, top_only : bool = True) -> dict:
 		"""get raw item info from zotero api"""
-		url = self.url + item_key
-		r = self.https.request('GET', url, headers = {'Zotero-API-Key': self.api_key})
-		return json.loads(r.data.decode('utf-8'))
+		
+		# get the item
+		r = self.https.request(
+			'GET', self.url + ('/top' if top_only else ''),
+			headers = {
+				'Zotero-API-Key' : self.api_key,
+				'itemKey' : item_key,
+			},
+		)
+
+		data_str : str = r.data.decode('utf-8')
+		if data_str.lower() == 'not found':
+			raise KeyError(f'item {item_key} not found')
+		data_lst : list = json.loads(data_str)
+
+		# get the item with the correct key
+		for item_raw in data_lst:
+			if item_raw['data']['key'] == item_key:
+				return item_raw
+		
+		# raise error if not found
+		raise KeyError(f'item {item_key} returned results, but key not found in them:\n\n\n{data_lst}')
+
+	def get_library_type(self) -> str:
+		if 'users' in self.url:
+			return 'user'
+		elif 'groups' in self.url:
+			return 'group'
+		else:
+			raise ValueError(f'could not determine library type from {self.url=}')
+	
+	def get_library_id(self) -> str:
+		if 'users' in self.url:
+			# find 'users' in the url and get the ID after the next slash
+			idx : int = self.url.index('users')
+			return self.url[idx+6:].split('/')[0]
+		elif 'groups' in self.url:
+			# find 'groups' in the url and get the ID after the next slash
+			idx : int = self.url.index('groups')
+			return self.url[idx+7:].split('/')[0]
+		else:
+			raise ValueError(f'could not determine library id from {self.url=}')
 
 	def get_item_fmt_ZKCacheKey(self, item_key : ZoteroKey) -> ZKCacheKey:
 		"""get a `ZKCacheKey` from a zotero item key"""
 		item_raw = self.get_raw(item_key)
 		return ZKCacheKey_from_item_raw(item_raw)
 
-	def search_raw(self, query : str) -> list:
+	def search_raw(self, query : str, top_only : bool = True) -> list:
 		r = self.https.request(
 			'GET', 
-			self.url, 
+			self.url + ('/top' if top_only else ''), 
 			headers = {'Zotero-API-Key': self.api_key, 'q' : query},
 		)
 		return json.loads(r.data.decode('utf-8'))
+
+	def search_title_exact(self, title : str, top_only : bool = True) -> Optional[dict]:
+		r = self.https.request(
+			'GET', 
+			self.url + ('/top' if top_only else ''), 
+			headers = {'Zotero-API-Key': self.api_key, 'q' : title},
+		)
+		res = json.loads(r.data.decode('utf-8'))
+		# print(json.dumps(res, indent=2))
+		for item in res:
+			if ('title' in item['data']) and (item['data']['title'] == title):
+				return item
+		return None
+
+
+	def search_fmt_key(self, query : str) -> list:
+		"""get a list of Zotero keys from a zotero search query"""
+		return [
+			( x['data']['key'], *ZKCacheKey_from_item_raw(x))
+			for x in self.search_raw(query)
+		]
 
 	def search_fmt(self, query : str) -> list:
 		r = self.search_raw(query)
@@ -207,6 +274,24 @@ class ZoteroManager(object):
 			if key not in zot_keys:
 				zot_keys[key] = ZKCacheKey_from_item_raw(item_raw)
 		return zot_keys
+
+	def upload_attachment(self, filepath : str, parentID : ZoteroKey) -> bool:
+		"""upload an attachment to zotero"""
+		# TODO: this is really inefficient, but it works for now
+		# OPTIMIZE: upload all attachments at once
+		# OPTIMIZE: instead of always deleting file, hash both files and skip if identical
+
+		metadata = self.pyzot._attachment_template("imported_file").copy()
+		metadata["title"] = 'kindleclip_' + os.path.basename(filepath)
+		metadata["filename"] = filepath
+
+		# if file already exists, delete it first
+		item_exists : Optional[dict] = self.search_title_exact(metadata["title"], top_only = False)
+		if item_exists is not None:
+			print(f"deleting existing attachment {item_exists['key']}")
+			self.pyzot.delete_item([item_exists])
+
+		return self.pyzot._attachment([metadata], parentID)
 
 
 def zotero_upload_notes(
